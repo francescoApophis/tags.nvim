@@ -24,7 +24,7 @@ local build_parser = function(lang)
 
   local lib_name = fmt('lib%sparser.so', lang)
   local lib_target = fmt('%s/%s', lib_path, lib_name)
-  local cflags = '-fpic -shared -rdynamic -Wall -Wextra -Werror -Wpedantic -std=c99'
+  local cflags = '-fpic -shared -rdynamic -Wall -Wextra -Werror -Wpedantic -std=c99 -Wno-unused'
 
   local cmd_build = fmt('!cc -o %s %s  %s', lib_target, lib_files, cflags)
   local result = api.nvim_exec2(cmd_build, {output = true}).output
@@ -60,12 +60,18 @@ end
 
 
 
-local file = [[
-  int main() {
-  }
-]]
-local file_len = file:len() + 1 -- TODO: better name
+local file_path = vim.fn.expand("%:p:h") .. '/parsers/c/cparser.c' 
+-- .. '/parsers/c/cparser.c'
 
+-- FIXME: filepath is nil
+
+local file_path = '/home/renee/nvim-plugs/tags.nvim/file.fakec'
+local file_handle = assert(io.open(file_path, 'rb'))
+local file = file_handle:read('*all')
+file_handle:close()
+
+
+local file_len = file:len() + 1 -- TODO: better name
 
 local FFI, LIB = load_parser() 
 

@@ -3,13 +3,23 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <ctype.h>
+#include <string.h>
 
 
 
 typedef enum {
   TK_IDENT,
   TK_COMMA,
+
+  TK_IF,
+  TK_ELSE,
+  TK_WHILE,
+  TK_FOR,
+  TK_RETURN,
+  TK_BREAK,
+  TK_CASE,
 
   TK_OPEN_PAR,
   TK_CLOSE_PAR,
@@ -29,8 +39,9 @@ typedef enum {
 // If we meet one we just fail the parsing rule.
 
 typedef struct {
-  uint32_t offset; 
   TokenType type;
+  uint32_t offset; 
+  uint32_t len;
 } Token;
 
 
@@ -44,11 +55,12 @@ typedef struct {
 
 
 void parse(const char* src, uint32_t src_len);
-// NOTE: they're here even though they're declared 
-// static for documentation purposes
+// NOTE: these here are declared for 
+// documentation purposes, they don't need and 
+// won't be imported through the ffi
 static void advance(Parser* p);
 static Token next_token(Parser* p);
-static void print_token(Token* tk);
+static void print_token(Parser* p, Token* tk);
 
 
 #endif

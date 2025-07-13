@@ -85,7 +85,7 @@ static void advance(Parser* p);
 static Token next_token(Parser* p);
 static bool parse_func_decl(Parser* p, Token* name);
 static bool expect(Parser* p, TokenType expected);
-static void print_token(Token tk);
+static void print_token(Parser* p, Token tk);
 
 
 #endif

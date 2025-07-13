@@ -56,7 +56,7 @@ char gl_err_msg[256] = {0};
 
 
 
-static void print_token(Token tk)
+static void print_token(Parser* p, Token tk)
 {
   switch(tk.type) {
     case TK_IDENT: printf("TK_IDENT: "); break; 
@@ -77,6 +77,8 @@ static void print_token(Token tk)
     case TK_EOF: printf("TK_EOF: "); break; 
     case TK_UNKNOWN: printf("TK_UNKNOWN: "); break; 
   }
+  printf("%.*s, ", tk.len, p->src + tk.offset);
+  printf("offset: %d, len: %d", tk.offset, tk.offset);
   printf("\n");
 }
 
@@ -84,12 +86,36 @@ static void print_token(Token tk)
 
 static Token next_token(Parser* p)
 {
-  while (p->src_offset + 1 <= p->src_len && 
-        isspace(p->src[p->src_offset])) {
-    p->src_offset++;
+  // NOTE: skips non-readable chars + comments (single-multi)
+  uint8_t comment_type = 0; // NOTE: 0 = non-comment, 1 = '//', 2 = '/**/'
+  while (p->src_offset + 1 <= p->src_len) {
+    char c = p->src[p->src_offset];
+    char nextc = p->src[p->src_offset + 1];
+
+    if (!comment_type) {
+      if (c == '/'){
+        if      (nextc == '/') comment_type = 1;
+        else if (nextc == '*') comment_type = 2;
+      }
+      if (comment_type > 0 || isspace(c))
+        p->src_offset++;
+      else 
+        break;
+
+    } else {
+      if (comment_type == 2 && c == '*' && nextc == '/'){
+        comment_type = 0;
+        p->src_offset += 2;
+        continue;
+      } else if (comment_type == 1 && nextc == '\n') {
+        comment_type = 0;
+      }
+      p->src_offset++;
+    }
   }
 
   char c = p->src[p->src_offset];
+
 
   Token t = (Token){
     .offset = p->src_offset++,
@@ -139,7 +165,6 @@ static Token next_token(Parser* p)
       }
     }
   }
-
 end:
   return t;
 }
@@ -168,6 +193,7 @@ static bool expect(Parser* p, TokenType expected)
 // it just means the parsed statement is NOT a function declaration
 static bool parse_func_decl(Parser* p, Token* name)
 {
+
   // type 
   if (!expect(p, TK_IDENT)) 
     return false; 
@@ -215,6 +241,7 @@ static bool parse(Parser* p, Tokens* tokens)
       da_append(tokens, tk, DA_TOKENS_INIT_CAP, Tokens);
   }
 
+
 defer:
   return failed;
 }
@@ -239,7 +266,6 @@ bool parser_main(const char* src, uint32_t src_len,
     .src = src, 
     .src_len = src_len,
   };
-
 
   if (parse(&p, tokens))
     return_defer(1);

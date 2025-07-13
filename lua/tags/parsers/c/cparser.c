@@ -1,25 +1,81 @@
 #include "./cparser.h"
 
-static void print_token(Parser* p, Token* tk)
+/*
+ * NOTE: we keep the macros here instead 
+ * of putting them into the header file because 
+ * soon I would like to directly read the 
+ * '*parser.h' files-content into 'ffi.cdef', 
+ * as it is error prone to pass declarations manually.
+ *
+ * Unfortunately as of now (07/25) 'ffi' doesn't 
+ * support any preprocessing and pre-processor 
+ * tokens are not allowed:
+ * https://luajit.org/ext_ffi_api.html
+ * under 'ffi.cdef(def)'
+ *
+ * TODO: when we will read the files to ffi.cdef we 
+ * have to clean up the comments as well 
+ *
+*/
+
+
+
+// NOTE: gl -> global  
+char gl_err_msg[256] = {0};
+
+
+#define return_defer(val) do {  \
+  failed = (val);  \
+  goto defer; \
+} while(0)
+
+
+#define error(...) do { \
+  int len = snprintf(gl_err_msg, sizeof(gl_err_msg), \
+                      "\n[%s:%d]: ", __FILE__, __LINE__); \
+  snprintf(gl_err_msg + len, sizeof(gl_err_msg), __VA_ARGS__); \
+  return_defer(1); \
+} while (0);
+
+
+#define da_append(da, elem, da_init_cap, da_type) do { \
+  if ((da)->len + 1 >= (da)->cap) { \
+    (da)->cap = (da)->cap == 0 ? (da_init_cap) : (da)->cap * 2; \
+    void* tmp = realloc((da)->items, (da)->cap * sizeof(*(da)->items)); \
+    if (tmp == NULL) { \
+      error("not enough memory for '" #da_type "' dynamic array"); \
+    } \
+    (da)->items = tmp; \
+  } \
+  (da)->items[(da)->len++] = (elem); \
+} while (0)
+
+#define DA_TOKENS_INIT_CAP  64
+
+
+
+
+
+static void print_token(Token tk)
 {
-  switch(tk->type) {
-    case TK_IDENT: printf("TK_IDENT: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_COMMA: printf("TK_COMMA: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_IF: printf("TK_IF: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_ELSE: printf("TK_ELSE: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_WHILE: printf("TK_WHILE: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_FOR: printf("TK_FOR: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_RETURN: printf("TK_RETURN: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_BREAK: printf("TK_BREAK: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_CASE: printf("TK_CASE: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_OPEN_PAR: printf("TK_OPEN_PAR: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_CLOSE_PAR: printf("TK_CLOSE_PAR: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_OPEN_SBRACKET: printf("TK_OPEN_SBRACKET: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_CLOSE_SBRACKET: printf("TK_CLOSE_SBRACKET: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_OPEN_CBRACKET: printf("TK_OPEN_CBRACKET: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_CLOSE_CBRACKET: printf("TK_CLOSE_CBRACKET: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_EOF: printf("TK_EOF: %.*s", tk->len, &p->src[tk->offset]); break; 
-    case TK_UNKNOWN: printf("TK_UNKNOWN: %.*s", tk->len, &p->src[tk->offset]); break; 
+  switch(tk.type) {
+    case TK_IDENT: printf("TK_IDENT: "); break; 
+    case TK_COMMA: printf("TK_COMMA: "); break; 
+    case TK_IF: printf("TK_IF: "); break; 
+    case TK_ELSE: printf("TK_ELSE: "); break; 
+    case TK_WHILE: printf("TK_WHILE: "); break; 
+    case TK_FOR: printf("TK_FOR: "); break; 
+    case TK_RETURN: printf("TK_RETURN: "); break; 
+    case TK_BREAK: printf("TK_BREAK: "); break; 
+    case TK_CASE: printf("TK_CASE: "); break; 
+    case TK_OPEN_PAR: printf("TK_OPEN_PAR: "); break; 
+    case TK_CLOSE_PAR: printf("TK_CLOSE_PAR: "); break; 
+    case TK_OPEN_SBRACKET: printf("TK_OPEN_SBRACKET: "); break; 
+    case TK_CLOSE_SBRACKET: printf("TK_CLOSE_SBRACKET: "); break; 
+    case TK_OPEN_CBRACKET: printf("TK_OPEN_CBRACKET: "); break; 
+    case TK_CLOSE_CBRACKET: printf("TK_CLOSE_CBRACKET: "); break; 
+    case TK_EOF: printf("TK_EOF: "); break; 
+    case TK_UNKNOWN: printf("TK_UNKNOWN: "); break; 
   }
   printf("\n");
 }
@@ -108,19 +164,24 @@ static bool expect(Parser* p, TokenType expected)
 }
 
 
-static bool parse_func_decl(Parser* p)
+// NOTE: failure (return false) here is NOT a *program* failure, 
+// it just means the parsed statement is NOT a function declaration
+static bool parse_func_decl(Parser* p, Token* name)
 {
+  // type 
   if (!expect(p, TK_IDENT)) 
     return false; 
+
+  // function name
   if (!expect(p, TK_IDENT)) 
     return false;
-  
-  Token func_name = p->curr;
+  *name = p->curr;
 
   if (!expect(p, TK_OPEN_PAR)) 
     return false;
 
-  while (p->curr.type != TK_CLOSE_PAR) { // parameters
+  // parameters
+  while (p->curr.type != TK_CLOSE_PAR) { 
     advance(p);
     if (p->curr.type == TK_EOF) 
       return false;
@@ -129,30 +190,64 @@ static bool parse_func_decl(Parser* p)
   if (!expect(p, TK_OPEN_CBRACKET)) 
     return false;
 
-  while (p->curr.type != TK_CLOSE_CBRACKET) { // function body
+  // function body
+  while (p->curr.type != TK_CLOSE_CBRACKET) { 
     advance(p);
     if (p->curr.type == TK_EOF) 
       return false;
   }
 
-  printf("FUNCTION = %.*s\n", func_name.len, p->src + func_name.offset);
   return true;
 }
 
 
-void parse(const char* src, uint32_t src_len)
+static bool parse(Parser* p, Tokens* tokens)
 {
+  bool failed = 0;
+
+  advance(p);
+
+  while (p->curr.type != TK_EOF) {
+    Token tk = {0};
+    if (!parse_func_decl(p, &tk))  
+      advance(p); // TODO: advance to the next semicolon
+    else
+      da_append(tokens, tk, DA_TOKENS_INIT_CAP, Tokens);
+  }
+
+defer:
+  return failed;
+}
+
+/*
+ * NOTE: in this program a failure 
+ * (i.e. global 'err_msg' was set up + return false)
+ * is a *program* failure which shuold 
+ * only be caused by realloc; nothing 
+ * else should cause it to break.
+ * If no declaration is found in a file, 
+ * the program is still considered successful.
+*/ 
+
+bool parser_main(const char* src, uint32_t src_len, 
+                 Tokens* tokens, char* lua_err_msg, uint32_t lua_err_msg_len)
+{
+  bool failed = 0;
+  *tokens = (Tokens){0};
+
   Parser p = (Parser){ 
     .src = src, 
     .src_len = src_len,
   };
 
-  advance(&p);
 
-  while (p.curr.type != TK_EOF) {
-    if (!parse_func_decl(&p))  
-      advance(&p);
-  }
+  if (parse(&p, tokens))
+    return_defer(1);
+
+defer:
+  if (failed)
+    strncpy(lua_err_msg, gl_err_msg, lua_err_msg_len);
+
+  return failed;
 }
-
 

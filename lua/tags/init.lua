@@ -8,14 +8,14 @@ if not jit then error('no jit found') end
 
 local build_parser = function(lang)
   assert(type(lang) == 'string', fmt('"lang" has to be a string, got %q', type(lang)))
--- TODO: mention the github pull-request where we took this 
-  -- https://github.com/nvim-lualine/lualine.nvim/compare/c5bd65d...c3fad10
   local sep = package.config:sub(1, 1)
   local tags_folder_path = debug.getinfo(1, "S").source
-
   if tags_folder_path:sub(1, 1) ~= '@' then
     error('tags.nvim: failed to retrieve project folder path')
   end
+  -- snippet above is based on:
+  -- https://www.reddit.com/r/neovim/comments/qkzsu7/comment/hj0r3mm/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
+  -- https://github.com/nvim-lualine/lualine.nvim/compare/c5bd65d...c3fad10
 
   tags_folder_path = tags_folder_path:sub(2, -1):gsub('/[^/]+$', '')
 
